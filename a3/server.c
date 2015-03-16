@@ -59,8 +59,9 @@ void add_user(char *message, Address remaddr) {
 	// Sends the list of user 
 	if(number_users > 0) {
 		// Sends the list of users to the new client
-		names = malloc(sizeof(char) * SIZENAME * number_users);
+		names = malloc(sizeof(char) * BUFSIZE);
 		names[0] = '\0';
+		sprintf(names, "%d ", number_users);
 		for(i = 0; i < number_users; ++i) {
 			sprintf(buf, "%s ", users[i].name);
 			strcat(names, buf);
@@ -81,8 +82,14 @@ void add_user(char *message, Address remaddr) {
 				exit(-1);
 			}
 		}
+	} else {
+		sprintf(buf, "%d ", 0);
+		printf("Sending: \"%s\"\n", buf);
+		if (sendto(server_socket, buf, strlen(buf), 0, (struct sockaddr *)&remaddr, addrlen) < 0) {
+			perror("ERROR - sendto failed");
+			exit(-1);
+		}
 	}
-	
 	
 	// Gets the name of the user
 	buf = consume(message, next_char);
@@ -120,7 +127,7 @@ void disconnect(char *message, Address remaddr) {
 	char *buf = consume(message, next_char);
 	
 	// Notifies the user
-	sprintf(message, "Disconnected");
+	sprintf(message, "You are disconnected");
 	if (sendto(server_socket, message, strlen(message), 0, (struct sockaddr *)&remaddr, addrlen) < 0) {
 		perror("ERROR - sendto failed");
 		exit(-1);
@@ -142,6 +149,7 @@ void disconnect(char *message, Address remaddr) {
 	}
 	
 	--number_users;
+	printf("User removed, %d users left\n", number_users);
 }
 
 /*
@@ -165,22 +173,24 @@ void broadcast(char *message, Address remaddr) {
 			for(i = 0; i < number_users; ++i) {
 				printf("loop %d, test %d\n", i, id);
 				if(i != id) {
-					printf("Sending: \"%s\" to %s\n", message, users[i].name);
+					if(users[i].conf == IN_CONF) {
+						printf("Sending: \"%s\" to %s\n", message, users[i].name);
 			
-					if (sendto(server_socket, message, strlen(message), 0, (struct sockaddr *)&(users[i].addr), addrlen) < 0) {
-						perror("ERROR - sendto failed");
-						exit(-1);
+						if (sendto(server_socket, message, strlen(message), 0, (struct sockaddr *)&(users[i].addr), addrlen) < 0) {
+							perror("ERROR - sendto failed");
+							exit(-1);
+						}
+					} else {
+						printf("%s out of conference\n", users[i].name);
 					}
 				} else {
 					printf("Sender %s\n", users[id].name);
 				}
 			}
 		} else {
-			// TODO send error message to client
 			printf("Not enough users\n");
 		}
 	} else {
-		// TODO send error message to client
 		printf("Unknown user\n"); 
 	}
 	
@@ -201,7 +211,6 @@ void peer_to_peer(char *message, Address remaddr) {
 	id = get_userid(name);
 	
 	if(id < 0) {
-		// TODO Send error message to user
 		printf("Unknown user\n");
 		// Leaves the function
 		free(name);
@@ -214,7 +223,6 @@ void peer_to_peer(char *message, Address remaddr) {
 	id_dest = get_userid(dest);
 	
 	if(id_dest < 0) {
-		// TODO Send error message to user
 		printf("Unknown dest\n");
 		// Leaves the function
 		free(name);
@@ -227,18 +235,35 @@ void peer_to_peer(char *message, Address remaddr) {
 		perror("ERROR - sendto failed");
 		exit(-1);
 	}
-
-	/*buf = malloc(sizeof(char) * BUFSIZE);
-	parse_name(message, buf, next_char);
-	sprintf(dest, "Cannot send your message, %s does not exist!", buf);
-	
-	if (sendto(server_socket, dest, strlen(dest), 0, (struct sockaddr *)&(remaddr), addrlen) < 0) {
-		perror("ERROR - sendto failed");
-		exit(-1);
-	}*/
 	
 	free(dest);
 	free(name);
+}
+
+void join_conf(char *message, Address remaddr) {
+	// Gets the name of the user
+	char *buf = consume(message, next_char);
+	
+	// Gets the id of the user
+	int id = get_userid(buf);
+	
+	// Add the user to the conference
+	users[id].conf = IN_CONF;
+	
+	printf("%d Added user %s to the conference\n", users[id].conf, buf);
+}
+
+void leave_conf(char *message, Address remaddr) {
+	// Gets the name of the user
+	char *buf = consume(message, next_char);
+	
+	// Gets the id of the user
+	int id = get_userid(buf);
+	
+	// Add the user to the conference
+	users[id].conf = OUT_CONF;
+	
+	printf("%d Removed user %s out of the conference\n", users[id].conf, buf);
 }
 
 /*
@@ -268,6 +293,8 @@ void server() {
 	functions[1] = &broadcast;
 	functions[2] = &add_user;
 	functions[3] = &disconnect;
+	functions[4] = &join_conf;
+	functions[5] = &leave_conf;
 
 	while(1) {
 		printf("Server: Waiting on port %d\n", PORT);

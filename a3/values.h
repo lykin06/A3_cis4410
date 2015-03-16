@@ -1,13 +1,15 @@
 #ifndef FLAGS_H_
 #define FLAGS_H_
 
-// Flags for the diffrent actions
+// Flags for the different actions
 #define PTOP 0
 #define BROADCAST 1
 #define CONNECT 2
 #define QUIT 3
+#define JOIN 4
+#define LEAVE 5
 
-// Flags for the diffrent modes
+// Flags for the different modes
 #define IN_CONF 0
 #define OUT_CONF 1
 

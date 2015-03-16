@@ -1,10 +1,10 @@
 #ifndef SERVER_H_
 #define SERVER_H_
 
-#include <netinet/in.h>
-
 // Number of possible actions
-#define ACTIONS 4
+#define ACTIONS 6
+
+#include <netinet/in.h>
 
 // Holds the users information
 typedef struct User_t User;

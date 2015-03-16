@@ -1,8 +1,8 @@
-TARGET = client server
+TARGET = clients server
 LIBS = -lm
 CC = gcc
 CFLAGS = -g -Wall -pthread
-GTK = `pkg-config --cflags --libs gtk+-3.0`
+GTK = `pkg-config --cflags --libs gtk+-3.0 webkitgtk-3.0`
 
 .PHONY: clean default all
 
@@ -19,7 +19,7 @@ OBJECTS = $(OBJECTS_SERVER) $(OBJECTS_CLIENTS)
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
 clients: $(OBJECTS_CLIENTS)
-	$(CC) $(OBJECTS_CLIENTS) $(CFLAGS) $(GTK) $(LIBS) -o $@
+	$(CC) $(OBJECTS_CLIENTS) $(GTK) $(CFLAGS) $(LIBS) -o $@
 
 server: $(OBJECTS_SERVER)
 	$(CC) $(OBJECTS_SERVER) $(CFLAGS) $(LIBS) -o $@
@@ -27,5 +27,4 @@ server: $(OBJECTS_SERVER)
 clean:
 	-rm -f *.o
 	-rm -f $(TARGET)
-	-rm -f *.txt
 	-rm -f *~
