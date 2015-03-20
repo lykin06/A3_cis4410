@@ -54,5 +54,10 @@ void broadcast(char *message);
  */
 void peer_to_peer(char *message);
 
+/*
+ * Sends the message to the server
+ */
+void send_message(char *message);
+
 #endif // CLIENT_H_
 

@@ -65,6 +65,21 @@ enum
 	N_COLUMNS
 };
 
+/* 
+ * Displays a plain text message into the text view
+ */
+static void display_message(char *message, GtkWidget *view, char *tag) {
+    GtkTextBuffer *buffer;
+    GtkTextIter iter;
+
+    // Gets the buffer and the iter from the view
+    buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+    gtk_text_buffer_get_iter_at_offset(buffer, &iter, 0);
+
+    // Insert the message at the beginning of the text field
+   	gtk_text_buffer_insert_with_tags_by_name(buffer, &iter, message, -1, "lmarg", tag, NULL);
+}
+
 /* Called when the window is closed */
 void destroy(GtkWidget *widget, gpointer data)
 {
@@ -119,6 +134,7 @@ void on_changed(GtkWidget *widget, gpointer label)
 {
 	GtkTreeIter iter;
 	GtkTreeModel *model;
+	char text[BUFSIZE];
 
 	if (gtk_tree_selection_get_selected(GTK_TREE_SELECTION(widget), &model, &iter)) {
 		gtk_tree_model_get(model, &iter, LIST_ITEM, &peer,  -1);
@@ -128,59 +144,58 @@ void on_changed(GtkWidget *widget, gpointer label)
 			mode = BROADCAST;
 			sprintf(indicator, "you");
 			printf("%d Set broadcast mode, indicator = %s\n", mode, indicator);
+			sprintf(text, "Broadcast mode activated\n");
 		} else {
 			mode = PTOP;
 			sprintf(indicator, "you to %s", peer);
 			printf("%d Set p2p mode with %s, indicator = %s\n", mode, peer, indicator);
+			sprintf(text, "Peer_to_peer mode with %s activated\n", peer);
 		}
+
+		display_message(text, view, "red_fg");
 	}
 }
 
-static void display_message(char *message, WebKitWebView *view) {
-	WebKitDOMDocument *document;
-    WebKitDOMElement *body, *div;
-    
-    document = webkit_web_view_get_dom_document (view);
-    printf("doc\n");
-    body = webkit_dom_document_query_selector (document, "body", NULL);
-    printf("body\n");
-    div = webkit_dom_document_create_element (document, "div", NULL);
-    printf("div\n");
-    webkit_dom_node_set_text_content (WEBKIT_DOM_NODE (div), message, NULL);
-    printf("set text\n");
-    webkit_dom_node_append_child (WEBKIT_DOM_NODE (body), WEBKIT_DOM_NODE (div), NULL);
-    printf("append\n");
+/*
+ * Sends the message to the server
+ */
+void send_message(char *message) {
+	printf("Sending: %s\n", message);
+	if (sendto(cs, message, strlen(message), 0, (struct sockaddr *)&addr, len) < 0) {
+		perror("ERROR - sendto failed");
+		exit(-1);
+	}
 }
 
 /*
  * Hooks the entry with the view
  * Used tutorial to create this from: https://developer.gnome.org/
  */
-static void entry_activate_cb (GtkEntry *entry, WebKitWebView *view)
+static void entry_activate_cb (GtkEntry *entry, GtkWidget *view)
 {
-    char *text = malloc(sizeof(char*));
-    char *message = malloc(sizeof(char) * BUFSIZE);
+	char tag[BUFSIZE];
+    char text[BUFSIZE];
+    char message[BUFSIZE];
     
-    sprintf(text, "%s: %s", indicator, gtk_entry_get_text(entry));
+    sprintf(text, "%s: %s\n", indicator, gtk_entry_get_text(entry));
     
     if(mode == BROADCAST) {
-    	sprintf(message, "%d %s %s", mode, n, gtk_entry_get_text(entry));
+    	if(conf == IN_CONF) {
+    		sprintf(message, "%d %s %s", mode, n, gtk_entry_get_text(entry));
+    		sprintf(tag, "normal");
+    		send_message(message);
+    	} else {
+    		sprintf(text, "You are outside the conference, you cannot broadcasts messages.\nPlease select a client before sending your message.\n");
+    		sprintf(tag, "bold");
+    	}
     } else {
     	sprintf(message, "%d %s %s %s", mode, n, peer, gtk_entry_get_text(entry));
+    	sprintf(tag, "blue_fg");
+    	send_message(message);
     }
-    
-    // Sends message
-    printf("Sending: %s\n", message);
-	if (sendto(cs, message, strlen(message), 0, (struct sockaddr *)&addr, len) < 0) {
-		perror("ERROR - sendto failed");
-		exit(-1);
-	}
-	
-	display_message(text, view);
+
+	display_message(text, view, tag);
     gtk_entry_set_text (entry, "");
-    
-    free(text);
-    free(message);
 }
 
 /*
@@ -189,22 +204,20 @@ static void entry_activate_cb (GtkEntry *entry, WebKitWebView *view)
  */
 static void activate_cb (GObject *switcher, GParamSpec *pspec, gpointer user_data)
 {
-	char *buf = malloc(sizeof(char) * BUFSIZE);
+	char buf[BUFSIZE];
 
 	if (gtk_switch_get_active (GTK_SWITCH (switcher))) {
 		sprintf(buf, "%d %s", JOIN, n);
 		conf = IN_CONF;
+		display_message("Joining conference\n", view, "red_fg");
 	} else {
 		sprintf(buf, "%d %s", LEAVE, n);
 		conf = OUT_CONF;
+		display_message("Leaving conference\n", view, "red_fg");
 	}
 
 	// Notifies the server
-	printf("Sending: %s\n", buf);
-	if (sendto(cs, buf, strlen(buf), 0, (struct sockaddr *)&addr, len) < 0) {
-		perror("ERROR - sendto failed");
-		exit(-1);
-	}
+	send_message(buf);
 }
 
 /*
@@ -227,11 +240,13 @@ static GtkWidget* create_window(void)
 	GtkWidget *box_list;
 	GtkWidget *box_window;
 	GtkTreeSelection *selection;
+	GtkTextIter iter;
+	GtkTextBuffer *buffer;
 
 	/* Create a window with a title, and a default size */
 	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW (window), "Messenger");
-	gtk_window_set_default_size(GTK_WINDOW (window), 880, 800);
+	gtk_window_set_default_size(GTK_WINDOW (window), 660, 600);
 	g_signal_connect(window, "delete-event", G_CALLBACK (gtk_main_quit), NULL);
 	
 	/* Create the boxes */
@@ -263,10 +278,21 @@ static GtkWidget* create_window(void)
 	g_object_set (scroll, "shadow-type", GTK_SHADOW_IN, NULL);
 
 	/* Create the view to print the messages */
-	view = webkit_web_view_new ();
-	gtk_container_add (GTK_CONTAINER (scroll), view);
-	webkit_web_view_load_string (WEBKIT_WEB_VIEW (view), "<html><body></body></html>", "text/html", "UTF-8", NULL);
-	
+	view = gtk_text_view_new();
+	buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+	gtk_container_add(GTK_CONTAINER (scroll), view);
+	gtk_text_buffer_get_iter_at_offset(buffer, &iter, 0);
+
+	/* Create tags to apply polices to the texts */
+	gtk_text_buffer_create_tag(buffer, "lmarg", "left_margin", 5, NULL);
+	gtk_text_buffer_create_tag(buffer, "bold", "weight", PANGO_WEIGHT_BOLD, NULL);
+	gtk_text_buffer_create_tag(buffer, "normal", "weight", PANGO_WEIGHT_NORMAL, NULL);
+	gtk_text_buffer_create_tag(buffer, "blue_fg", "foreground", "blue", NULL);
+	gtk_text_buffer_create_tag(buffer, "red_fg", "foreground", "red", NULL);
+
+	/* Add a new message */
+	gtk_text_buffer_insert_with_tags_by_name (buffer, &iter, "You are connected in Broadcast mode\n", -1, "bold", "lmarg",  NULL);
+
 	/* Hook the entry to the view */
 	g_signal_connect (entry, "activate", G_CALLBACK (entry_activate_cb), view);
 	
@@ -319,7 +345,7 @@ void *receive_thread(void *data_thread) {
 	functions[3] = &remove_user;
 
 	// Buffer to receive messages
-	char *message = malloc(sizeof(char) * BUFSIZE);
+	char message[BUFSIZE];
 
 	// Set the data values
 	Data *data = (Data *) data_thread;
@@ -354,9 +380,7 @@ void *receive_thread(void *data_thread) {
 		}
 	}
 	
-	free(message);
 	free(functions);
-	
 	pthread_exit((void *) 0);
 }
 
@@ -365,7 +389,7 @@ void *receive_thread(void *data_thread) {
  */
 void set_list_peers() {
 	int i;
-	char *value = malloc(sizeof(char*));
+	char value[BUFSIZE];
 	
 	// Set all the values
 	next_char[0] = 0;
@@ -391,10 +415,15 @@ void set_list_peers() {
  * Adds the user to the list of users
  */
 void add_user(char *message) {
-	char *value = malloc(sizeof(char*));
-	
+	char value[BUFSIZE];
+	char text[BUFSIZE];
+
 	parse_name(message, value, next_char);
 	printf("New user: %s\n", value);
+
+	// Print a message
+	sprintf(text, "%s connected\n", value);
+	display_message(text, view, "red_fg");
 	
 	// Add the new user
 	add_to_list(value);
@@ -416,7 +445,8 @@ void remove_user(char *message) {
 	GtkTreeModel *model;
 	GtkTreeIter iter;
 	char *value;
-	char *name = malloc(sizeof(char*));
+	char name[BUFSIZE];
+	char text[BUFSIZE];
 	gboolean isvalid;
 
 	// Get the user name
@@ -438,6 +468,8 @@ void remove_user(char *message) {
 		if(strcmp(name, value) == 0) {
 			// Remove the user
 			gtk_list_store_remove(store, &iter);
+			sprintf(text, "%s disconnected\n", name);
+			display_message(text, view, "red_fg");
 			return;
 		}
 		
@@ -450,33 +482,27 @@ void remove_user(char *message) {
  * Receives a message in broadcast mode
  */
 void broadcast(char *message) {
-    char *text = malloc(sizeof(char*));
-   	char *name = malloc(sizeof(char) * SIZENAME);
+    char text[BUFSIZE];
+   	char name[SIZENAME];
    	
    	parse_name(message, name, next_char);
-   	sprintf(text, "%s: %s", name, consume(message, next_char));
+   	sprintf(text, "%s: %s\n", name, consume(message, next_char));
    	
-   	display_message(text, WEBKIT_WEB_VIEW(view));
-   	
-    free(text);
-    free(name);
+   	display_message(text, view, "normal");
 }
 
 /*
  * Receives a message in p2p mode
  */
 void peer_to_peer(char *message) {
-    char *text = malloc(sizeof(char*));
-   	char *name = malloc(sizeof(char) * SIZENAME);
+    char text[BUFSIZE];
+   	char name[SIZENAME];
    	
    	parse_name(message, name, next_char);
    	parse_name(message, text, next_char);
-   	sprintf(text, "%s to you: %s", name, consume(message, next_char));
+   	sprintf(text, "%s to you: %s\n", name, consume(message, next_char));
    	
-   	display_message(text, WEBKIT_WEB_VIEW(view));
-   	
-    free(text);
-    free(name);
+   	display_message(text, view, "blue_fg");
 }
 
 /*

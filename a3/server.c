@@ -29,6 +29,9 @@ User *users;
 int number_users;
 int alloc;
 
+// user's action
+int action;
+
 /*
  * Returns the id of the given username
  * Returns -1 if the user is not in the list
@@ -173,7 +176,7 @@ void broadcast(char *message, Address remaddr) {
 			for(i = 0; i < number_users; ++i) {
 				printf("loop %d, test %d\n", i, id);
 				if(i != id) {
-					if(users[i].conf == IN_CONF) {
+					if((users[i].conf == IN_CONF) || (action != BROADCAST)) {
 						printf("Sending: \"%s\" to %s\n", message, users[i].name);
 			
 						if (sendto(server_socket, message, strlen(message), 0, (struct sockaddr *)&(users[i].addr), addrlen) < 0) {
@@ -280,7 +283,7 @@ void free_vars() {
  * Receives and processes the messages from the client
  */
 void server() {
-	int recvlen, action;
+	int recvlen;
 	char *message;
 	Address remaddr;
 	
